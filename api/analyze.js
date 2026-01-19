@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   try {
     const { imageBase64 } = req.body;
 
-    const response = await fetch("https://YOUR_VISION_API_ENDPOINT", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.VISION_API_KEY}`,
