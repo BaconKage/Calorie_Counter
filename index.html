@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Calorie Counter</title>
+
+  <!-- React -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body { background:#050505; color:#fff; }
+    video { object-fit: cover; }
+    * { -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+
+<body>
+<div id="root"></div>
+
+<script>
+const { useState, useRef, useEffect, useMemo } = React;
+
+/* -------- Local Nutrition DB (demo-safe) -------- */
+const FOOD_DB = {
+  "Masala Dosa": { kcal: 520, protein: 12, carbs: 78, fat: 18 },
+  "Idli": { kcal: 290, protein: 10, carbs: 55, fat: 5 },
+  "Veg Fried Rice": { kcal: 610, protein: 14, carbs: 92, fat: 22 },
+  "Chicken Biryani": { kcal: 720, protein: 28, carbs: 90, fat: 26 },
+  "Paneer Butter Masala": { kcal: 540, protein: 20, carbs: 18, fat: 42 },
+  "Salad": { kcal: 180, protein: 6, carbs: 20, fat: 8 }
+};
+
+/* -------- API call -------- */
+async function analyzeFrame(videoEl) {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  const w = videoEl.videoWidth;
+  const h = videoEl.videoHeight;
+
+  canvas.width = 640;
+  canvas.height = Math.round(h * (640 / w));
+  ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+  const base64 = canvas.toDataURL("image/jpeg", 0.7).split(",")[1];
+
+  const res = await fetch("/api/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageBase64: base64 })
+  });
+
+  return await res.json();
+}
+
+function App() {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const historyRef = useRef([]);
+
+  const [status, setStatus] = useState("idle");
+  const [label, setLabel] = useState(null);
+  const [confidence, setConfidence] = useState(0);
+  const [busy, setBusy] = useState(false);
+
+  async function startCamera() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }, audio: false
+    });
+    streamRef.current = stream;
+    videoRef.current.srcObject = stream;
+    await videoRef.current.play();
+    historyRef.current = [];
+    setStatus("running");
+  }
+
+  function stopCamera() {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    setStatus("idle");
+    setLabel(null);
+  }
+
+  useEffect(() => {
+    let raf;
+    async function loop() {
+      raf = requestAnimationFrame(loop);
+      if (status !== "running" || busy) return;
+
+      const now = Date.now();
+      const last = historyRef.current.at(-1)?.t || 0;
+      if (now - last < 1200) return;
+
+      setBusy(true);
+      try {
+        const result = await analyzeFrame(videoRef.current);
+        const food = result.label || "Unknown";
+        const conf = result.confidence || 0.7;
+
+        historyRef.current.push({ food, conf, t: now });
+        if (historyRef.current.length > 6) historyRef.current.shift();
+
+        const counts = {};
+        historyRef.current.forEach(p => counts[p.food] = (counts[p.food] || 0) + 1);
+
+        const stable = Object.entries(counts).find(([_, c]) => c >= 4);
+        if (stable) {
+          setLabel(stable[0]);
+          setConfidence(conf);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      setBusy(false);
+    }
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [status, busy]);
+
+  const data = FOOD_DB[label] || null;
+
+  return (
+    React.createElement("div", { className: "max-w-md mx-auto p-4" },
+
+      React.createElement("div", { className: "flex justify-between mb-4" },
+        React.createElement("div", null,
+          React.createElement("h1", { className: "text-xl font-bold text-orange-400" }, "Calorie Counter"),
+          React.createElement("p", { className: "text-sm text-white/70" }, "Live food scan")
+        ),
+        status !== "running"
+          ? React.createElement("button", {
+              onClick: startCamera,
+              className: "bg-orange-500 text-black px-4 py-2 rounded-xl font-semibold"
+            }, "Check Calories")
+          : React.createElement("button", {
+              onClick: stopCamera,
+              className: "bg-white/10 px-4 py-2 rounded-xl"
+            }, "Stop")
+      ),
+
+      React.createElement("div", {
+        className: "relative rounded-3xl overflow-hidden border border-white/10",
+        style: { aspectRatio: "3/4", background: "#000" }
+      },
+        React.createElement("video", {
+          ref: videoRef,
+          className: "absolute inset-0 w-full h-full",
+          playsInline: true,
+          muted: true
+        }),
+
+        React.createElement("div", {
+          className: "absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-black/80 to-black/0"
+        },
+          !label
+            ? React.createElement("p", { className: "text-sm" }, status === "running" ? "Scanning meal…" : "Camera preview")
+            : React.createElement("div", null,
+                React.createElement("div", { className: "text-3xl font-bold text-orange-400" },
+                  data?.kcal || "—", " kcal"
+                ),
+                React.createElement("div", { className: "text-sm mt-1" },
+                  label, " • ", Math.round(confidence * 100), "% confidence"
+                ),
+                data && React.createElement("div", { className: "text-xs mt-2 text-white/70" },
+                  `${data.protein}g protein • ${data.carbs}g carbs • ${data.fat}g fat`
+                )
+              )
+        )
+      ),
+
+      React.createElement("p", { className: "text-xs text-white/40 mt-3" },
+        "Demo estimate. Portion size and preparation affect calories."
+      )
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+</body>
+</html>
