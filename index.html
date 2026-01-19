@@ -5,181 +5,533 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Calorie Counter</title>
 
-  <!-- React -->
+  <!-- React (CDN) -->
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
 
-  <!-- Tailwind -->
+  <!-- Tailwind (CDN for demo/prototype) -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
-    body { background:#050505; color:#fff; }
-    video { object-fit: cover; }
-    * { -webkit-tap-highlight-color: transparent; }
+    :root{
+      --bg:#050505;
+      --card: rgba(255,255,255,0.06);
+      --card2: rgba(255,255,255,0.08);
+      --border: rgba(255,255,255,0.10);
+      --text: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.66);
+      --muted2: rgba(255,255,255,0.52);
+      --orange:#ff7a18;
+      --orange2:#ff9a3d;
+      --good:#35d07f;
+      --warn:#ffcc66;
+      --bad:#ff5b5b;
+    }
+    html,body{height:100%; background:var(--bg); color:var(--text);}
+    body{margin:0;}
+    video{object-fit:cover;}
+    *{-webkit-tap-highlight-color:transparent;}
+    .safe-pt{padding-top:calc(env(safe-area-inset-top) + 12px);}
+    .safe-pb{padding-bottom:calc(env(safe-area-inset-bottom) + 12px);}
+
+    @keyframes glow {
+      0%,100%{box-shadow:0 0 0 rgba(255,122,24,0);}
+      50%{box-shadow:0 0 28px rgba(255,122,24,0.22);}
+    }
+    .glow{animation:glow 2.2s ease-in-out infinite;}
+
+    /* bottom sheet */
+    .sheet {
+      transform: translateY(110%);
+      transition: transform 220ms ease;
+    }
+    .sheet.open { transform: translateY(0%); }
   </style>
 </head>
 
 <body>
-<div id="root"></div>
+  <div id="root"></div>
 
-<script>
-const { useState, useRef, useEffect, useMemo } = React;
+  <script>
+    const { useEffect, useMemo, useRef, useState } = React;
 
-/* -------- Local Nutrition DB (demo-safe) -------- */
-const FOOD_DB = {
-  "Masala Dosa": { kcal: 520, protein: 12, carbs: 78, fat: 18 },
-  "Idli": { kcal: 290, protein: 10, carbs: 55, fat: 5 },
-  "Veg Fried Rice": { kcal: 610, protein: 14, carbs: 92, fat: 22 },
-  "Chicken Biryani": { kcal: 720, protein: 28, carbs: 90, fat: 26 },
-  "Paneer Butter Masala": { kcal: 540, protein: 20, carbs: 18, fat: 42 },
-  "Salad": { kcal: 180, protein: 6, carbs: 20, fat: 8 }
-};
+    function clamp(n,a,b){ return Math.max(a, Math.min(b, n)); }
+    function round(n){ return Math.round((Number(n)||0)); }
 
-/* -------- API call -------- */
-async function analyzeFrame(videoEl) {
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-
-  const w = videoEl.videoWidth;
-  const h = videoEl.videoHeight;
-
-  canvas.width = 640;
-  canvas.height = Math.round(h * (640 / w));
-  ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-
-  const base64 = canvas.toDataURL("image/jpeg", 0.7).split(",")[1];
-
-  const res = await fetch("/api/analyze", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imageBase64: base64 })
-  });
-
-  return await res.json();
-}
-
-function App() {
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const historyRef = useRef([]);
-
-  const [status, setStatus] = useState("idle");
-  const [label, setLabel] = useState(null);
-  const [confidence, setConfidence] = useState(0);
-  const [busy, setBusy] = useState(false);
-
-  async function startCamera() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" }, audio: false
-    });
-    streamRef.current = stream;
-    videoRef.current.srcObject = stream;
-    await videoRef.current.play();
-    historyRef.current = [];
-    setStatus("running");
-  }
-
-  function stopCamera() {
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    setStatus("idle");
-    setLabel(null);
-  }
-
-  useEffect(() => {
-    let raf;
-    async function loop() {
-      raf = requestAnimationFrame(loop);
-      if (status !== "running" || busy) return;
-
-      const now = Date.now();
-      const last = historyRef.current.at(-1)?.t || 0;
-      if (now - last < 1200) return;
-
-      setBusy(true);
-      try {
-        const result = await analyzeFrame(videoRef.current);
-        const food = result.label || "Unknown";
-        const conf = result.confidence || 0.7;
-
-        historyRef.current.push({ food, conf, t: now });
-        if (historyRef.current.length > 6) historyRef.current.shift();
-
-        const counts = {};
-        historyRef.current.forEach(p => counts[p.food] = (counts[p.food] || 0) + 1);
-
-        const stable = Object.entries(counts).find(([_, c]) => c >= 4);
-        if (stable) {
-          setLabel(stable[0]);
-          setConfidence(conf);
-        }
-      } catch (e) {
-        console.error(e);
-      }
-      setBusy(false);
+    function ratingColor(score){
+      const s = Number(score)||0;
+      if (s >= 82) return "var(--good)";
+      if (s >= 65) return "var(--warn)";
+      return "var(--bad)";
     }
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [status, busy]);
 
-  const data = FOOD_DB[label] || null;
+    function prettyConfidence(c){
+      const v = clamp(Number(c)||0, 0, 1);
+      return `${Math.round(v*100)}%`;
+    }
 
-  return (
-    React.createElement("div", { className: "max-w-md mx-auto p-4" },
+    async function analyzeFrameFromVideo(videoEl, quality=0.72){
+      const w = videoEl.videoWidth;
+      const h = videoEl.videoHeight;
+      if (!w || !h) return null;
 
-      React.createElement("div", { className: "flex justify-between mb-4" },
-        React.createElement("div", null,
-          React.createElement("h1", { className: "text-xl font-bold text-orange-400" }, "Calorie Counter"),
-          React.createElement("p", { className: "text-sm text-white/70" }, "Live food scan")
-        ),
-        status !== "running"
-          ? React.createElement("button", {
-              onClick: startCamera,
-              className: "bg-orange-500 text-black px-4 py-2 rounded-xl font-semibold"
-            }, "Check Calories")
-          : React.createElement("button", {
-              onClick: stopCamera,
-              className: "bg-white/10 px-4 py-2 rounded-xl"
-            }, "Stop")
-      ),
+      // Downscale for speed/cost
+      const targetW = 640;
+      const scale = targetW / w;
+      const tw = Math.round(w * clamp(scale, 0.2, 1));
+      const th = Math.round(h * clamp(scale, 0.2, 1));
 
-      React.createElement("div", {
-        className: "relative rounded-3xl overflow-hidden border border-white/10",
-        style: { aspectRatio: "3/4", background: "#000" }
-      },
-        React.createElement("video", {
-          ref: videoRef,
-          className: "absolute inset-0 w-full h-full",
-          playsInline: true,
-          muted: true
-        }),
+      const canvas = document.createElement("canvas");
+      canvas.width = tw;
+      canvas.height = th;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(videoEl, 0, 0, tw, th);
 
-        React.createElement("div", {
-          className: "absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-black/80 to-black/0"
-        },
-          !label
-            ? React.createElement("p", { className: "text-sm" }, status === "running" ? "Scanning meal…" : "Camera preview")
-            : React.createElement("div", null,
-                React.createElement("div", { className: "text-3xl font-bold text-orange-400" },
-                  data?.kcal || "—", " kcal"
+      const base64 = canvas.toDataURL("image/jpeg", quality).split(",")[1];
+
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64: base64 })
+      });
+
+      const data = await res.json();
+
+      // If API returns error payload, still pass it up
+      return { ok: res.ok, status: res.status, data };
+    }
+
+    function App(){
+      const videoRef = useRef(null);
+      const streamRef = useRef(null);
+      const inFlightRef = useRef(false);
+      const lastCallRef = useRef(0);
+
+      const [status, setStatus] = useState("idle"); // idle | starting | running | error
+      const [errorMsg, setErrorMsg] = useState("");
+      const [busy, setBusy] = useState(false);
+
+      const [result, setResult] = useState(null);   // API JSON
+      const [sheetOpen, setSheetOpen] = useState(false);
+
+      const totals = useMemo(() => {
+        const t = result?.total || {};
+        return {
+          kcal: Number(t.kcal) || 0,
+          protein_g: Number(t.protein_g) || 0,
+          carbs_g: Number(t.carbs_g) || 0,
+          fat_g: Number(t.fat_g) || 0,
+        };
+      }, [result]);
+
+      const rating = useMemo(() => {
+        const r = result?.rating || {};
+        return {
+          score: Number(r.score) || 0,
+          label: (r.label || "—").toString()
+        };
+      }, [result]);
+
+      const topItemName = useMemo(() => {
+        const items = result?.items;
+        if (!Array.isArray(items) || items.length === 0) return null;
+        return (items[0]?.name || "").toString().trim() || null;
+      }, [result]);
+
+      async function startCamera(){
+        setErrorMsg("");
+        setResult(null);
+        setSheetOpen(false);
+        setStatus("starting");
+
+        try{
+          if (streamRef.current){
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+          }
+
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          });
+
+          streamRef.current = stream;
+
+          const video = videoRef.current;
+          video.srcObject = stream;
+          video.playsInline = true;
+          video.muted = true;
+
+          await video.play();
+          setStatus("running");
+        }catch(e){
+          setStatus("error");
+          setErrorMsg(e?.message || "Camera permission denied / not available.");
+        }
+      }
+
+      function stopCamera(){
+        if (streamRef.current){
+          streamRef.current.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
+        }
+        setStatus("idle");
+        setBusy(false);
+        setResult(null);
+        setSheetOpen(false);
+        inFlightRef.current = false;
+      }
+
+      function overlayTap(e){
+        if (e.target?.dataset?.overlay === "1") setSheetOpen(false);
+      }
+
+      useEffect(() => {
+        let rafId = null;
+
+        async function loop(){
+          rafId = requestAnimationFrame(loop);
+
+          if (status !== "running") return;
+          if (!videoRef.current) return;
+
+          // throttle calls to avoid cost & keep UI smooth
+          const now = performance.now();
+          const minIntervalMs = 1800; // ~0.55 rps
+          if (now - lastCallRef.current < minIntervalMs) return;
+
+          if (inFlightRef.current) return;
+
+          inFlightRef.current = true;
+          lastCallRef.current = now;
+          setBusy(true);
+
+          try{
+            const resp = await analyzeFrameFromVideo(videoRef.current, 0.72);
+            if (!resp) return;
+
+            if (!resp.ok){
+              // show API error once, but keep running
+              const msg = resp?.data?.error || `API error (${resp.status})`;
+              setErrorMsg(msg.toString());
+            } else {
+              setErrorMsg("");
+              setResult(resp.data);
+            }
+          }catch(err){
+            console.error(err);
+            setErrorMsg("Network / API error");
+          }finally{
+            setBusy(false);
+            inFlightRef.current = false;
+          }
+        }
+
+        rafId = requestAnimationFrame(loop);
+        return () => { if (rafId) cancelAnimationFrame(rafId); };
+      }, [status]);
+
+      useEffect(() => {
+        return () => stopCamera();
+      }, []);
+
+      const suggestions = Array.isArray(result?.suggestions) ? result.suggestions : [];
+      const items = Array.isArray(result?.items) ? result.items : [];
+      const conf = clamp(Number(result?.confidence)||0, 0, 1);
+
+      return (
+        React.createElement("div", { className: "min-h-screen safe-pt safe-pb" },
+          React.createElement("div", { className: "max-w-md mx-auto px-4" },
+
+            // Top bar
+            React.createElement("div", { className: "flex items-center justify-between mb-3" },
+              React.createElement("div", null,
+                React.createElement("div", { className: "text-sm text-white/70" }, "Calorie Counter"),
+                React.createElement("div", { className: "text-xl font-semibold tracking-tight" },
+                  React.createElement("span", { style: { color: "var(--orange)" } }, "Live"),
+                  " Meal Scan"
+                )
+              ),
+              status !== "running"
+                ? React.createElement("button", {
+                    onClick: startCamera,
+                    className: "glow px-4 py-2 rounded-2xl font-semibold text-black",
+                    style: { background: "linear-gradient(135deg, var(--orange), var(--orange2))" }
+                  }, "Check Calories")
+                : React.createElement("button", {
+                    onClick: stopCamera,
+                    className: "px-4 py-2 rounded-2xl font-semibold bg-white/10 border border-white/10 text-white"
+                  }, "Stop")
+            ),
+
+            // Instructions
+            React.createElement("div", {
+              className: "rounded-2xl p-4 mb-4",
+              style: { background: "var(--card)", border: "1px solid var(--border)" }
+            },
+              React.createElement("div", { className: "text-sm text-white/85" },
+                "Point your camera at the meal. Calories update automatically — no shutter button."
+              ),
+              React.createElement("div", { className: "mt-2 text-xs text-white/55 space-y-1" },
+                React.createElement("div", null, "• Good lighting improves accuracy"),
+                React.createElement("div", null, "• Keep the full plate in frame"),
+                React.createElement("div", null, "• Estimates vary by portion size")
+              ),
+              errorMsg
+                ? React.createElement("div", { className: "mt-3 text-sm text-red-300" }, errorMsg)
+                : null
+            ),
+
+            // Camera card
+            React.createElement("div", {
+              className: "relative overflow-hidden rounded-3xl border mb-4",
+              style: { borderColor: "rgba(255,255,255,0.10)", background: "#000", aspectRatio: "3/4" }
+            },
+              React.createElement("video", {
+                ref: videoRef,
+                className: "absolute inset-0 w-full h-full",
+                playsInline: true,
+                muted: true
+              }),
+
+              // Top chips
+              React.createElement("div", { className: "absolute top-3 left-3 right-3 flex items-center justify-between gap-2" },
+                React.createElement("div", {
+                  className: "px-3 py-1.5 rounded-2xl text-xs border",
+                  style: { background: "rgba(0,0,0,0.35)", borderColor: "rgba(255,255,255,0.12)" }
+                },
+                  status === "running" ? (busy ? "Analyzing…" : "Live Scan") : "Preview"
                 ),
-                React.createElement("div", { className: "text-sm mt-1" },
-                  label, " • ", Math.round(confidence * 100), "% confidence"
+                React.createElement("div", {
+                  className: "px-3 py-1.5 rounded-2xl text-xs border",
+                  style: { background: "rgba(0,0,0,0.35)", borderColor: "rgba(255,122,24,0.30)", color: "var(--orange2)" }
+                },
+                  status === "running" ? "No shutter" : "Tap Check Calories"
+                )
+              ),
+
+              // Bottom overlay
+              React.createElement("div", {
+                className: "absolute inset-x-0 bottom-0 p-3",
+                style: { background: "linear-gradient(to top, rgba(0,0,0,0.82), rgba(0,0,0,0))" }
+              },
+                !result
+                  ? React.createElement("div", {
+                      className: "rounded-2xl p-4 border",
+                      style: { background: "rgba(0,0,0,0.35)", borderColor: "rgba(255,255,255,0.10)" }
+                    },
+                      React.createElement("div", { className: "text-sm text-white/85" },
+                        status === "running" ? "Scanning meal…" : "Camera preview will appear here."
+                      ),
+                      React.createElement("div", { className: "mt-1 text-xs text-white/55" },
+                        "Host on HTTPS (Vercel) for camera access on mobile."
+                      )
+                    )
+                  : React.createElement("div", {
+                      className: "rounded-2xl p-4 border",
+                      style: { background: "rgba(0,0,0,0.40)", borderColor: "rgba(255,255,255,0.12)" }
+                    },
+
+                      React.createElement("div", { className: "flex items-start justify-between gap-3" },
+                        React.createElement("div", null,
+                          React.createElement("div", { className: "text-xs text-white/60" }, "Estimated total"),
+                          React.createElement("div", { className: "text-3xl font-bold leading-none" },
+                            React.createElement("span", { style: { color: "var(--orange)" } }, round(totals.kcal)),
+                            React.createElement("span", { className: "text-base font-semibold text-white/80 ml-1" }, "kcal")
+                          ),
+                          React.createElement("div", { className: "mt-2 text-sm font-semibold" },
+                            topItemName ? topItemName : "Detected meal"
+                          ),
+                          React.createElement("div", { className: "mt-1 text-xs text-white/60" },
+                            `${prettyConfidence(conf)} confidence • live estimate`
+                          )
+                        ),
+
+                        React.createElement("div", { className: "text-right" },
+                          React.createElement("div", { className: "text-xs text-white/60" }, "Meal rating"),
+                          React.createElement("div", {
+                            className: "mt-1 inline-flex items-center gap-2 px-3 py-1.5 rounded-2xl border text-sm font-semibold",
+                            style: { background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.10)" }
+                          },
+                            React.createElement("span", {
+                              className: "inline-block w-2 h-2 rounded-full",
+                              style: { background: ratingColor(rating.score) }
+                            }),
+                            `${rating.label} • ${round(rating.score)}/100`
+                          ),
+
+                          React.createElement("button", {
+                            onClick: () => setSheetOpen(true),
+                            className: "mt-3 w-full px-4 py-2 rounded-2xl font-semibold text-black",
+                            style: { background: "linear-gradient(135deg, var(--orange), var(--orange2))" }
+                          }, "More details")
+                        )
+                      ),
+
+                      React.createElement("div", { className: "mt-3 flex flex-wrap gap-2 text-xs" },
+                        React.createElement("span", {
+                          className: "px-2.5 py-1 rounded-2xl border",
+                          style: { background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.10)" }
+                        }, `${round(totals.protein_g)}g protein`),
+                        React.createElement("span", {
+                          className: "px-2.5 py-1 rounded-2xl border",
+                          style: { background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.10)" }
+                        }, `${round(totals.carbs_g)}g carbs`),
+                        React.createElement("span", {
+                          className: "px-2.5 py-1 rounded-2xl border",
+                          style: { background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.10)" }
+                        }, `${round(totals.fat_g)}g fat`)
+                      )
+                    )
+              )
+            ),
+
+            React.createElement("div", { className: "text-xs text-white/45 mb-2" },
+              "Tip: On iPhone, allow camera permission for the site. Estimates vary with portion size."
+            )
+          ),
+
+          // Bottom sheet overlay
+          React.createElement("div", {
+            "data-overlay": "1",
+            onClick: overlayTap,
+            className: "fixed inset-0 z-50",
+            style: { display: sheetOpen ? "block" : "none", background: "rgba(0,0,0,0.55)" }
+          },
+            React.createElement("div", { className: "absolute inset-x-0 bottom-0 sheet open" },
+              React.createElement("div", {
+                className: "rounded-t-3xl border px-4 pt-3 pb-4",
+                style: { background: "rgba(10,10,10,0.98)", borderColor: "rgba(255,255,255,0.10)" }
+              },
+
+                React.createElement("div", { className: "flex items-center justify-between" },
+                  React.createElement("div", null,
+                    React.createElement("div", { className: "text-sm font-semibold" }, "Meal breakdown"),
+                    React.createElement("div", { className: "text-xs text-white/55 mt-0.5" },
+                      topItemName ? topItemName : "Detected items"
+                    )
+                  ),
+                  React.createElement("button", {
+                    onClick: () => setSheetOpen(false),
+                    className: "px-3 py-2 rounded-2xl bg-white/10 border border-white/10 text-sm"
+                  }, "Close")
                 ),
-                data && React.createElement("div", { className: "text-xs mt-2 text-white/70" },
-                  `${data.protein}g protein • ${data.carbs}g carbs • ${data.fat}g fat`
+
+                // Summary tiles
+                React.createElement("div", { className: "mt-3 grid grid-cols-2 gap-3" },
+                  React.createElement("div", {
+                    className: "rounded-2xl p-3 border",
+                    style: { background: "var(--card)", borderColor: "rgba(255,255,255,0.10)" }
+                  },
+                    React.createElement("div", { className: "text-xs text-white/60" }, "Calories"),
+                    React.createElement("div", { className: "text-2xl font-bold", style: { color: "var(--orange)" } },
+                      round(totals.kcal), " kcal"
+                    )
+                  ),
+                  React.createElement("div", {
+                    className: "rounded-2xl p-3 border",
+                    style: { background: "var(--card)", borderColor: "rgba(255,255,255,0.10)" }
+                  },
+                    React.createElement("div", { className: "text-xs text-white/60" }, "Confidence"),
+                    React.createElement("div", { className: "text-2xl font-bold" }, prettyConfidence(conf))
+                  ),
+                  React.createElement("div", {
+                    className: "rounded-2xl p-3 border",
+                    style: { background: "var(--card)", borderColor: "rgba(255,255,255,0.10)" }
+                  },
+                    React.createElement("div", { className: "text-xs text-white/60" }, "Protein"),
+                    React.createElement("div", { className: "text-xl font-semibold" }, round(totals.protein_g), " g")
+                  ),
+                  React.createElement("div", {
+                    className: "rounded-2xl p-3 border",
+                    style: { background: "var(--card)", borderColor: "rgba(255,255,255,0.10)" }
+                  },
+                    React.createElement("div", { className: "text-xs text-white/60" }, "Carbs"),
+                    React.createElement("div", { className: "text-xl font-semibold" }, round(totals.carbs_g), " g")
+                  ),
+                  React.createElement("div", {
+                    className: "rounded-2xl p-3 border",
+                    style: { background: "var(--card)", borderColor: "rgba(255,255,255,0.10)" }
+                  },
+                    React.createElement("div", { className: "text-xs text-white/60" }, "Fat"),
+                    React.createElement("div", { className: "text-xl font-semibold" }, round(totals.fat_g), " g")
+                  ),
+                  React.createElement("div", {
+                    className: "rounded-2xl p-3 border",
+                    style: { background: "var(--card)", borderColor: "rgba(255,255,255,0.10)" }
+                  },
+                    React.createElement("div", { className: "text-xs text-white/60" }, "Rating"),
+                    React.createElement("div", { className: "text-xl font-semibold" }, round(rating.score), "/100")
+                  )
+                ),
+
+                // Items list
+                React.createElement("div", { className: "mt-4" },
+                  React.createElement("div", { className: "text-sm font-semibold mb-2" }, "Detected items"),
+                  items.length === 0
+                    ? React.createElement("div", { className: "text-sm text-white/60" }, "No items parsed (try re-framing the meal).")
+                    : React.createElement("div", { className: "space-y-2" },
+                        items.slice(0, 6).map((it, i) => (
+                          React.createElement("div", {
+                            key: i,
+                            className: "rounded-2xl p-3 border",
+                            style: { background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.10)" }
+                          },
+                            React.createElement("div", { className: "flex items-start justify-between gap-3" },
+                              React.createElement("div", null,
+                                React.createElement("div", { className: "text-sm font-semibold" }, (it.name||"Item").toString()),
+                                React.createElement("div", { className: "text-xs text-white/55 mt-0.5" }, (it.portion||"").toString())
+                              ),
+                              React.createElement("div", { className: "text-sm font-semibold", style: { color: "var(--orange2)" } },
+                                `${round(it.kcal)} kcal`
+                              )
+                            ),
+                            React.createElement("div", { className: "mt-2 text-xs text-white/65" },
+                              `${round(it.protein_g)}g P • ${round(it.carbs_g)}g C • ${round(it.fat_g)}g F`
+                            )
+                          )
+                        ))
+                      )
+                ),
+
+                // Suggestions
+                React.createElement("div", { className: "mt-4" },
+                  React.createElement("div", { className: "text-sm font-semibold mb-2" }, "Suggestions"),
+                  suggestions.length === 0
+                    ? React.createElement("div", { className: "text-sm text-white/60" }, "No suggestions returned.")
+                    : React.createElement("div", { className: "space-y-2" },
+                        suggestions.slice(0, 4).map((s, i) => (
+                          React.createElement("div", {
+                            key: i,
+                            className: "rounded-2xl p-3 border",
+                            style: { background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.10)" }
+                          },
+                            React.createElement("div", { className: "text-xs", style: { color: "var(--orange2)" } },
+                              (s.goal||"Suggestion").toString()
+                            ),
+                            React.createElement("div", { className: "text-sm text-white/85 mt-1" },
+                              (s.add||"").toString()
+                            )
+                          )
+                        ))
+                      )
+                ),
+
+                React.createElement("div", { className: "mt-4 text-xs text-white/45" },
+                  "Note: These are estimates from an image and can vary with portion size, ingredients, and cooking method."
                 )
               )
+            )
+          )
         )
-      ),
+      );
+    }
 
-      React.createElement("p", { className: "text-xs text-white/40 mt-3" },
-        "Demo estimate. Portion size and preparation affect calories."
-      )
-    )
-  );
-}
-
-ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
-</script>
+    ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+  </script>
 </body>
 </html>
