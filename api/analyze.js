@@ -9,6 +9,12 @@ export default async function handler(req, res) {
 You are a nutrition assistant analyzing a meal photo.
 Return JSON only with this shape:
 {
+  "detected_dish":{
+    "name":"string",
+    "cuisine":"string",
+    "confidence":number,
+    "alternatives":["string"]
+  },
   "items":[
     {
       "name":"string",
@@ -38,7 +44,10 @@ Rules:
 - confidence is 0.0 to 1.0
 - score is 0 to 100
 - keep text short and practical
+- prefer specific dish names (example: "chicken biryani", "paneer butter masala", "caesar salad") instead of generic labels
+- when uncertain, still provide best guess plus alternatives
 - estimate portion realistically from photo; do not leave fields empty
+- use visual cues such as texture, sauce, plating, garnish, and shape
 - no extra text outside JSON
 `.trim();
 
@@ -49,7 +58,7 @@ Rules:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-4o",
         temperature: 0.2,
         max_tokens: 800,
         response_format: { type: "json_object" },
@@ -58,7 +67,7 @@ Rules:
             role: "user",
             content: [
               { type: "text", text: prompt },
-              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: "high" } },
             ],
           },
         ],
@@ -100,6 +109,7 @@ Rules:
       if (!Number.isFinite(x)) return 0;
       return Math.max(min, Math.min(max, x));
     };
+    const s = (v, fallback = "") => String(v ?? fallback).trim() || fallback;
 
     const items = Array.isArray(parsed?.items)
       ? parsed.items.slice(0, 12).map((it) => ({
@@ -145,14 +155,24 @@ Rules:
 
     const balance = {
       score: n(parsed?.balance?.score, 0, 100),
-      verdict: String(parsed?.balance?.verdict || "Needs improvement"),
-      summary: String(parsed?.balance?.summary || "Meal can be improved with better macro balance."),
+      verdict: s(parsed?.balance?.verdict, "Needs improvement"),
+      summary: s(parsed?.balance?.summary, "Meal can be improved with better macro balance."),
       improve: Array.isArray(parsed?.balance?.improve)
         ? parsed.balance.improve.slice(0, 5).map((x) => String(x))
         : [],
     };
 
+    const detected_dish = {
+      name: s(parsed?.detected_dish?.name, items[0]?.name || "Meal"),
+      cuisine: s(parsed?.detected_dish?.cuisine, "Unknown"),
+      confidence: n(parsed?.detected_dish?.confidence ?? parsed?.confidence, 0, 1),
+      alternatives: Array.isArray(parsed?.detected_dish?.alternatives)
+        ? parsed.detected_dish.alternatives.slice(0, 4).map((x) => s(x)).filter(Boolean)
+        : [],
+    };
+
     return res.status(200).json({
+      detected_dish,
       items,
       total,
       confidence: n(parsed?.confidence, 0, 1),
