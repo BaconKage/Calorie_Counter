@@ -30,7 +30,7 @@
     *{-webkit-tap-highlight-color:transparent;}
 
     .safe-pt{padding-top:calc(env(safe-area-inset-top) + 12px);}
-    .safe-pb{padding-bottom:calc(env(safe-area-inset-bottom) + 12px);}
+    .safe-pb{padding-bottom:calc(env(safe-area-inset-bottom) + 92px);}
 
     @keyframes scanLine {
       0%{ transform:translateY(-8%); opacity:.25; }
@@ -131,6 +131,7 @@
       const total = useMemo(() => result?.total || { kcal:0, protein_g:0, carbs_g:0, fat_g:0 }, [result]);
       const balance = useMemo(() => result?.balance || { score:0, verdict:"-", summary:"", improve:[] }, [result]);
       const suggestions = useMemo(() => Array.isArray(result?.suggestions) ? result.suggestions : [], [result]);
+      const detectedDish = useMemo(() => result?.detected_dish || null, [result]);
       const conf = useMemo(() => clamp(Number(result?.confidence)||0, 0, 1), [result]);
 
       const quickItems = useMemo(() => items.slice(0, 5), [items]);
@@ -259,16 +260,7 @@
                   " Food Vision"
                 )
               ),
-              status !== "running"
-                ? React.createElement("button", {
-                    onClick: startCamera,
-                    className: "press px-4 py-2 rounded-2xl font-semibold text-black",
-                    style: { background: "linear-gradient(135deg, var(--orange), var(--orange2))" }
-                  }, "Start Scan")
-                : React.createElement("button", {
-                    onClick: stopCamera,
-                    className: "press px-4 py-2 rounded-2xl font-semibold text-white"
-                  , style: { background: "rgba(255,122,24,0.18)", border: "1px solid rgba(255,159,74,0.45)" } }, "Stop")
+              null
             ),
 
             React.createElement("div", {
@@ -276,7 +268,7 @@
               style: { background: "linear-gradient(160deg, rgba(255,132,38,0.14), rgba(20,12,7,0.8))", border: "1px solid var(--border)", boxShadow: "0 14px 34px rgba(0,0,0,0.45)" }
             },
               React.createElement("div", { className: "text-sm text-white/85" },
-                "Tap Start Scan, point at your meal, get instant food + calorie estimate."
+                "Use the bottom button to start camera scan and get instant food + calorie estimate."
               ),
               React.createElement("div", { className: "mt-2 text-xs text-white/60" },
                 "Tap a detected item for detailed nutrition and balanced-diet advice."
@@ -342,6 +334,11 @@
                       React.createElement("div", { className: "flex items-start justify-between gap-3" },
                         React.createElement("div", null,
                           React.createElement("div", { className: "text-xs text-white/60" }, "Quick info"),
+                          detectedDish
+                            ? React.createElement("div", { className: "mt-0.5 text-xs", style: { color: "var(--orange2)" } },
+                                `${detectedDish.name} • ${detectedDish.cuisine}`
+                              )
+                            : null,
                           React.createElement("div", { className: "text-3xl font-bold leading-none" },
                             React.createElement("span", { style: { color: "var(--orange)" } }, round(total.kcal)),
                             React.createElement("span", { className: "text-base font-semibold text-white/80 ml-1" }, "kcal")
@@ -375,6 +372,32 @@
                       )
                     )
               )
+            )
+          ),
+
+          React.createElement("div", {
+            className: "fixed inset-x-0 z-40 px-4",
+            style: { bottom: "calc(env(safe-area-inset-bottom) + 14px)" }
+          },
+            React.createElement("div", { className: "max-w-md mx-auto" },
+              status !== "running"
+                ? React.createElement("button", {
+                    onClick: startCamera,
+                    className: "press w-full py-3.5 rounded-2xl font-semibold text-black text-base",
+                    style: {
+                      background: "linear-gradient(135deg, var(--orange), var(--orange2))",
+                      boxShadow: "0 14px 32px rgba(255,122,24,0.35)"
+                    }
+                  }, "Start Scan")
+                : React.createElement("button", {
+                    onClick: stopCamera,
+                    className: "press w-full py-3.5 rounded-2xl font-semibold text-white text-base",
+                    style: {
+                      background: "rgba(255,122,24,0.18)",
+                      border: "1px solid rgba(255,159,74,0.5)",
+                      boxShadow: "0 10px 24px rgba(0,0,0,0.35)"
+                    }
+                  }, "Stop Scan")
             )
           ),
 
@@ -422,6 +445,22 @@
                   : null,
 
                 React.createElement("div", { className: "mt-3" },
+                  detectedDish
+                    ? React.createElement("div", {
+                        className: "rounded-2xl p-3 border mb-3",
+                        style: { background: "var(--card)", borderColor: "rgba(255,255,255,0.12)" }
+                      },
+                        React.createElement("div", { className: "text-xs text-white/60" }, "Detected dish"),
+                        React.createElement("div", { className: "mt-1 text-lg font-semibold", style: { color: "var(--orange2)" } },
+                          `${detectedDish.name} (${detectedDish.cuisine})`
+                        ),
+                        Array.isArray(detectedDish.alternatives) && detectedDish.alternatives.length
+                          ? React.createElement("div", { className: "mt-1 text-xs text-white/65" },
+                              `Also possible: ${detectedDish.alternatives.join(", ")}`
+                            )
+                          : null
+                      )
+                    : null,
                   React.createElement("div", {
                     className: "rounded-2xl p-3 border",
                     style: { background: "var(--card)", borderColor: "rgba(255,255,255,0.12)" }
