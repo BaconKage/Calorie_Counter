@@ -6,21 +6,40 @@ export default async function handler(req, res) {
     if (!imageBase64) return res.status(400).json({ error: "No image provided" });
 
     const prompt = `
-Analyze this meal photo and return JSON ONLY with:
+You are a nutrition assistant analyzing a meal photo.
+Return JSON only with this shape:
 {
-  "items":[{"name":"string","portion":"string","kcal":number,"protein_g":number,"carbs_g":number,"fat_g":number}],
+  "items":[
+    {
+      "name":"string",
+      "portion":"string",
+      "grams":number,
+      "kcal":number,
+      "protein_g":number,
+      "carbs_g":number,
+      "fat_g":number,
+      "confidence":number,
+      "why":"short reason for this estimate"
+    }
+  ],
   "total":{"kcal":number,"protein_g":number,"carbs_g":number,"fat_g":number},
   "confidence":number,
-  "rating":{"score":number,"label":"string"},
+  "balance":{
+    "score":number,
+    "verdict":"string",
+    "summary":"string",
+    "improve":["string"]
+  },
   "suggestions":[
-    {"goal":"More protein","add":"string"},
-    {"goal":"More carbohydrates","add":"string"}
+    {"goal":"More protein","add":"string","replace":"string","why":"string"}
   ]
 }
 Rules:
-- Provide best estimates even if unsure.
 - confidence is 0.0 to 1.0
-- No extra text outside JSON.
+- score is 0 to 100
+- keep text short and practical
+- estimate portion realistically from photo; do not leave fields empty
+- no extra text outside JSON
 `.trim();
 
     const openaiResp = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -32,8 +51,8 @@ Rules:
       body: JSON.stringify({
         model: "gpt-4o-mini",
         temperature: 0.2,
-        max_tokens: 550,
-        response_format: { type: "json_object" }, // IMPORTANT: forces JSON
+        max_tokens: 800,
+        response_format: { type: "json_object" },
         messages: [
           {
             role: "user",
@@ -48,7 +67,6 @@ Rules:
 
     const text = await openaiResp.text();
 
-    // If OpenAI returned an error JSON, surface it clearly
     if (!openaiResp.ok) {
       return res.status(openaiResp.status).json({
         error: "OpenAI API error",
@@ -57,10 +75,9 @@ Rules:
       });
     }
 
-    // Parse OpenAI JSON
     const data = JSON.parse(text);
-
     const content = data?.choices?.[0]?.message?.content ?? "";
+
     if (!content || !content.trim()) {
       return res.status(200).json({
         error: "Empty model response",
@@ -68,7 +85,6 @@ Rules:
       });
     }
 
-    // content should already be JSON (because response_format json_object)
     let parsed;
     try {
       parsed = JSON.parse(content);
@@ -79,7 +95,70 @@ Rules:
       });
     }
 
-    return res.status(200).json(parsed);
+    const n = (v, min = 0, max = 99999) => {
+      const x = Number(v);
+      if (!Number.isFinite(x)) return 0;
+      return Math.max(min, Math.min(max, x));
+    };
+
+    const items = Array.isArray(parsed?.items)
+      ? parsed.items.slice(0, 12).map((it) => ({
+          name: String(it?.name || "Food item"),
+          portion: String(it?.portion || "1 serving"),
+          grams: n(it?.grams, 0, 3000),
+          kcal: n(it?.kcal, 0, 6000),
+          protein_g: n(it?.protein_g, 0, 400),
+          carbs_g: n(it?.carbs_g, 0, 600),
+          fat_g: n(it?.fat_g, 0, 300),
+          confidence: n(it?.confidence, 0, 1),
+          why: String(it?.why || "Estimated from visible portion and common preparation."),
+        }))
+      : [];
+
+    const totalFromItems = items.reduce(
+      (acc, it) => {
+        acc.kcal += it.kcal;
+        acc.protein_g += it.protein_g;
+        acc.carbs_g += it.carbs_g;
+        acc.fat_g += it.fat_g;
+        return acc;
+      },
+      { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+    );
+
+    const totalRaw = parsed?.total || {};
+    const total = {
+      kcal: n(totalRaw.kcal || totalFromItems.kcal, 0, 8000),
+      protein_g: n(totalRaw.protein_g || totalFromItems.protein_g, 0, 500),
+      carbs_g: n(totalRaw.carbs_g || totalFromItems.carbs_g, 0, 900),
+      fat_g: n(totalRaw.fat_g || totalFromItems.fat_g, 0, 400),
+    };
+
+    const suggestions = Array.isArray(parsed?.suggestions)
+      ? parsed.suggestions.slice(0, 6).map((s) => ({
+          goal: String(s?.goal || "Balanced meal"),
+          add: String(s?.add || "Add vegetables or lean protein."),
+          replace: String(s?.replace || ""),
+          why: String(s?.why || "Improves overall nutrition quality."),
+        }))
+      : [];
+
+    const balance = {
+      score: n(parsed?.balance?.score, 0, 100),
+      verdict: String(parsed?.balance?.verdict || "Needs improvement"),
+      summary: String(parsed?.balance?.summary || "Meal can be improved with better macro balance."),
+      improve: Array.isArray(parsed?.balance?.improve)
+        ? parsed.balance.improve.slice(0, 5).map((x) => String(x))
+        : [],
+    };
+
+    return res.status(200).json({
+      items,
+      total,
+      confidence: n(parsed?.confidence, 0, 1),
+      balance,
+      suggestions,
+    });
   } catch (err) {
     console.error("analyze error:", err);
     return res.status(500).json({ error: "Server error", details: String(err?.message || err) });
