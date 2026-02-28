@@ -2,11 +2,19 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const { imageBase64 } = req.body || {};
+    const { imageBase64, previousDetectedDish } = req.body || {};
     if (!imageBase64) return res.status(400).json({ error: "No image provided" });
+
+    const previousDishName = String(previousDetectedDish?.name || "").trim();
+    const previousDishCuisine = String(previousDetectedDish?.cuisine || "").trim();
+    const previousDishConfidence = Number(previousDetectedDish?.confidence);
+    const previousDishContext = previousDishName
+      ? `Previous stable dish from recent frames: "${previousDishName}"${previousDishCuisine ? ` (${previousDishCuisine})` : ""}${Number.isFinite(previousDishConfidence) ? ` with confidence ${previousDishConfidence.toFixed(2)}` : ""}.`
+      : "No previous stable dish context.";
 
     const prompt = `
 You are a nutrition assistant analyzing a meal photo.
+${previousDishContext}
 Return JSON only with this shape:
 {
   "detected_dish":{
@@ -48,6 +56,8 @@ Rules:
 - when uncertain, still provide best guess plus alternatives
 - estimate portion realistically from photo; do not leave fields empty
 - use visual cues such as texture, sauce, plating, garnish, and shape
+- keep dish naming stable across similar frames; if this image appears to show the same dish as previous context, reuse that dish name
+- only switch to a different dish name when visual evidence clearly indicates a new dish
 - no extra text outside JSON
 `.trim();
 
