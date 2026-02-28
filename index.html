@@ -83,6 +83,14 @@
       return "var(--bad)";
     }
 
+    function normalizeDishName(name){
+      return String(name || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
     async function analyzeFrameFromVideo(videoEl, previousDetectedDish){
       const w = videoEl.videoWidth;
       const h = videoEl.videoHeight;
@@ -120,6 +128,9 @@
       const inFlightRef = useRef(false);
       const lastCallRef = useRef(0);
       const detectedDishRef = useRef(null);
+      const stableResultRef = useRef(null);
+      const pendingInitialRef = useRef({ name: "", count: 0, data: null });
+      const pendingSwitchRef = useRef({ name: "", count: 0, data: null });
 
       const [status, setStatus] = useState("idle");
       const [busy, setBusy] = useState(false);
@@ -138,11 +149,84 @@
 
       const quickItems = useMemo(() => items.slice(0, 5), [items]);
 
+      function getDishKey(data){
+        if (!data) return "";
+        return normalizeDishName(data?.detected_dish?.name || data?.items?.[0]?.name || "");
+      }
+
+      function confidenceOf(data){
+        return clamp(Number(data?.detected_dish?.confidence ?? data?.confidence ?? 0), 0, 1);
+      }
+
+      function resetStabilityState(){
+        stableResultRef.current = null;
+        pendingInitialRef.current = { name: "", count: 0, data: null };
+        pendingSwitchRef.current = { name: "", count: 0, data: null };
+      }
+
+      function commitStableResult(data){
+        stableResultRef.current = data;
+        setResult(data);
+      }
+
+      function handleStableResult(nextData){
+        if (!nextData) return;
+
+        const nextName = getDishKey(nextData);
+        const nextConfidence = confidenceOf(nextData);
+        const currentData = stableResultRef.current;
+        const currentName = getDishKey(currentData);
+
+        if (!currentData){
+          const pending = pendingInitialRef.current;
+          if (pending.name === nextName){
+            pending.count += 1;
+            pending.data = nextData;
+          } else {
+            pendingInitialRef.current = { name: nextName, count: 1, data: nextData };
+          }
+
+          const confirmed = pendingInitialRef.current;
+          const enoughSamples = confirmed.count >= 2;
+          const enoughConfidence = nextConfidence >= 0.45;
+
+          if (enoughSamples && (enoughConfidence || confirmed.count >= 3)){
+            commitStableResult(confirmed.data);
+          }
+          return;
+        }
+
+        if (!nextName || nextName === currentName){
+          pendingSwitchRef.current = { name: "", count: 0, data: null };
+          commitStableResult(nextData);
+          return;
+        }
+
+        const pendingSwitch = pendingSwitchRef.current;
+        if (pendingSwitch.name === nextName){
+          pendingSwitch.count += 1;
+          pendingSwitch.data = nextData;
+        } else {
+          pendingSwitchRef.current = { name: nextName, count: 1, data: nextData };
+        }
+
+        const candidate = pendingSwitchRef.current;
+        const shouldSwitch =
+          (candidate.count >= 3 && nextConfidence >= 0.55) ||
+          (candidate.count >= 2 && nextConfidence >= 0.85);
+
+        if (shouldSwitch){
+          pendingSwitchRef.current = { name: "", count: 0, data: null };
+          commitStableResult(candidate.data);
+        }
+      }
+
       async function startCamera(){
         setErrorMsg("");
         setResult(null);
         setSelectedItem(null);
         setSheetOpen(false);
+        resetStabilityState();
         setStatus("starting");
 
         try {
@@ -169,6 +253,7 @@
           await video.play();
           inFlightRef.current = false;
           lastCallRef.current = 0;
+          resetStabilityState();
 
           setStatus("running");
         } catch (e) {
@@ -189,6 +274,7 @@
         setSelectedItem(null);
         setErrorMsg("");
         inFlightRef.current = false;
+        resetStabilityState();
       }
 
       function openItem(item){
@@ -235,7 +321,7 @@
             }
 
             setErrorMsg("");
-            setResult(resp.data);
+            handleStableResult(resp.data);
           } catch (err) {
             setErrorMsg("Network/API error");
           } finally {
