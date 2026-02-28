@@ -1,527 +1,238 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>MyGym Food Assistant</title>
+export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+  try {
+    const { imageBase64, previousDetectedDish } = req.body || {};
+    if (!imageBase64) return res.status(400).json({ error: "No image provided" });
 
-  <style>
-    :root{
-      --bg:#060403;
-      --card:rgba(255,153,64,0.12);
-      --card2:rgba(15,9,5,0.96);
-      --border:rgba(255,157,66,0.3);
-      --text:rgba(255,245,235,0.96);
-      --muted:rgba(255,216,186,0.7);
-      --orange:#ff7a18;
-      --orange2:#ffb062;
-      --mint:#ffcf8c;
-      --bad:#ff6f6f;
-      --shadow: 0 24px 70px rgba(0,0,0,0.62);
+    const prompt = `
+You are a nutrition assistant analyzing a meal photo.
+Return JSON only with this shape:
+{
+  "detected_dish":{
+    "name":"string",
+    "cuisine":"string",
+    "confidence":number,
+    "alternatives":["string"]
+  },
+  "items":[
+    {
+      "name":"string",
+      "portion":"string",
+      "grams":number,
+      "kcal":number,
+      "protein_g":number,
+      "carbs_g":number,
+      "fat_g":number,
+      "confidence":number,
+      "why":"short reason for this estimate"
     }
+  ],
+  "total":{"kcal":number,"protein_g":number,"carbs_g":number,"fat_g":number},
+  "confidence":number,
+  "balance":{
+    "score":number,
+    "verdict":"string",
+    "summary":"string",
+    "improve":["string"]
+  },
+  "suggestions":[
+    {"goal":"More protein","add":"string","replace":"string","why":"string"}
+  ]
+}
+Rules:
+- confidence is 0.0 to 1.0
+- score is 0 to 100
+- keep text short and practical
+- prefer specific dish names (example: "chicken biryani", "paneer butter masala", "caesar salad") instead of generic labels
+- when uncertain, still provide best guess plus alternatives
+- estimate portion realistically from photo; do not leave fields empty
+- use visual cues such as texture, sauce, plating, garnish, and shape
+- no extra text outside JSON
+`.trim();
 
-    html,body{height:100%; background:radial-gradient(circle at 15% 8%, #5b2d12 0%, #1a0f08 34%, #090604 70%, #040302 100%); color:var(--text);}
-    body{margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background-attachment: fixed;}
-    video{object-fit:cover;}
-    *{-webkit-tap-highlight-color:transparent;}
+    const openaiResp = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0.2,
+        max_tokens: 800,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: "high" } },
+            ],
+          },
+        ],
+      }),
+    });
 
-    .safe-pt{padding-top:calc(env(safe-area-inset-top) + 12px);}
-    .safe-pb{padding-bottom:calc(env(safe-area-inset-bottom) + 92px);}
+    const text = await openaiResp.text();
 
-    @keyframes scanLine {
-      0%{ transform:translateY(-8%); opacity:.25; }
-      50%{ opacity:.85; }
-      100%{ transform:translateY(108%); opacity:.2; }
-    }
-    .scan-line{ animation:scanLine 2.1s linear infinite; }
-
-    @keyframes chipIn {
-      from{ opacity:0; transform:translateY(10px) scale(.96); }
-      to{ opacity:1; transform:translateY(0) scale(1); }
-    }
-    .chip-in{ animation:chipIn .28s ease-out both; }
-
-    @keyframes pulseSoft {
-      0%,100%{ opacity:.5; }
-      50%{ opacity:.95; }
-    }
-    .pulse-soft{ animation:pulseSoft 1.2s ease-in-out infinite; }
-
-    .sheet{ transform:translateY(108%); transition:transform 220ms ease; }
-    .sheet.open{ transform:translateY(0); }
-    .press:active{ transform:scale(0.98); }
-
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: rgba(255,255,255,0.06); }
-    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 999px; }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-
-  <script>
-    const { useEffect, useMemo, useRef, useState } = React;
-
-    function clamp(n,a,b){ return Math.max(a, Math.min(b, n)); }
-    function round(n){ return Math.round(Number(n) || 0); }
-
-    function confidenceLabel(c){
-      const v = clamp(Number(c) || 0, 0, 1);
-      if (v >= 0.8) return "High";
-      if (v >= 0.55) return "Medium";
-      return "Low";
-    }
-
-    function scoreColor(score){
-      const s = Number(score) || 0;
-      if (s >= 75) return "var(--orange2)";
-      if (s >= 55) return "#ffd39b";
-      return "var(--bad)";
-    }
-
-    async function analyzeFrameFromVideo(videoEl){
-      const w = videoEl.videoWidth;
-      const h = videoEl.videoHeight;
-      if (!w || !h) return null;
-
-      const targetW = 720;
-      const scale = targetW / w;
-      const tw = Math.round(w * clamp(scale, 0.25, 1));
-      const th = Math.round(h * clamp(scale, 0.25, 1));
-
-      const canvas = document.createElement("canvas");
-      canvas.width = tw;
-      canvas.height = th;
-
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(videoEl, 0, 0, tw, th);
-
-      const base64 = canvas.toDataURL("image/jpeg", 0.72).split(",")[1];
-
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64: base64 })
+    if (!openaiResp.ok) {
+      return res.status(openaiResp.status).json({
+        error: "OpenAI API error",
+        status: openaiResp.status,
+        details: text.slice(0, 2000),
       });
-
-      let data = null;
-      try { data = await res.json(); } catch { data = { error: "Non-JSON response from server" }; }
-
-      return { ok: res.ok, status: res.status, data };
     }
 
-    function App(){
-      const videoRef = useRef(null);
-      const streamRef = useRef(null);
-      const inFlightRef = useRef(false);
-      const lastCallRef = useRef(0);
+    const data = JSON.parse(text);
+    const content = data?.choices?.[0]?.message?.content ?? "";
 
-      const [status, setStatus] = useState("idle");
-      const [busy, setBusy] = useState(false);
-      const [errorMsg, setErrorMsg] = useState("");
-      const [sheetOpen, setSheetOpen] = useState(false);
-      const [result, setResult] = useState(null);
-      const [selectedItem, setSelectedItem] = useState(null);
-
-      const items = useMemo(() => Array.isArray(result?.items) ? result.items : [], [result]);
-      const total = useMemo(() => result?.total || { kcal:0, protein_g:0, carbs_g:0, fat_g:0 }, [result]);
-      const balance = useMemo(() => result?.balance || { score:0, verdict:"-", summary:"", improve:[] }, [result]);
-      const suggestions = useMemo(() => Array.isArray(result?.suggestions) ? result.suggestions : [], [result]);
-      const detectedDish = useMemo(() => result?.detected_dish || null, [result]);
-      const conf = useMemo(() => clamp(Number(result?.confidence)||0, 0, 1), [result]);
-
-      const quickItems = useMemo(() => items.slice(0, 5), [items]);
-
-      async function startCamera(){
-        setErrorMsg("");
-        setResult(null);
-        setSelectedItem(null);
-        setSheetOpen(false);
-        setStatus("starting");
-
-        try {
-          if (streamRef.current){
-            streamRef.current.getTracks().forEach(t => t.stop());
-            streamRef.current = null;
-          }
-
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: "environment" },
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
-            },
-            audio: false
-          });
-
-          streamRef.current = stream;
-          const video = videoRef.current;
-          video.srcObject = stream;
-          video.playsInline = true;
-          video.muted = true;
-
-          await video.play();
-          inFlightRef.current = false;
-          lastCallRef.current = 0;
-
-          setStatus("running");
-        } catch (e) {
-          setStatus("error");
-          setErrorMsg(e?.message || "Camera access failed.");
-        }
-      }
-
-      function stopCamera(){
-        if (streamRef.current){
-          streamRef.current.getTracks().forEach(t => t.stop());
-          streamRef.current = null;
-        }
-        setStatus("idle");
-        setBusy(false);
-        setSheetOpen(false);
-        setResult(null);
-        setSelectedItem(null);
-        setErrorMsg("");
-        inFlightRef.current = false;
-      }
-
-      function openItem(item){
-        setSelectedItem(item || null);
-        setSheetOpen(true);
-      }
-
-      useEffect(() => {
-        let rafId = null;
-
-        async function loop(){
-          rafId = requestAnimationFrame(loop);
-
-          if (status !== "running") return;
-          if (!videoRef.current) return;
-          if (sheetOpen) return;
-
-          const now = performance.now();
-          const MIN_INTERVAL_MS = 2500;
-          if (now - lastCallRef.current < MIN_INTERVAL_MS) return;
-          if (inFlightRef.current) return;
-
-          inFlightRef.current = true;
-          lastCallRef.current = now;
-          setBusy(true);
-
-          try {
-            const resp = await analyzeFrameFromVideo(videoRef.current);
-            if (!resp) return;
-
-            if (!resp.ok){
-              const msg = resp?.data?.error || `API error (${resp.status})`;
-              setErrorMsg(msg);
-
-              if (resp.status === 429){
-                lastCallRef.current = performance.now() + 10000;
-              }
-              return;
-            }
-
-            if (resp.data?.error){
-              setErrorMsg(resp.data.error);
-              return;
-            }
-
-            setErrorMsg("");
-            setResult(resp.data);
-          } catch (err) {
-            setErrorMsg("Network/API error");
-          } finally {
-            setBusy(false);
-            inFlightRef.current = false;
-          }
-        }
-
-        rafId = requestAnimationFrame(loop);
-        return () => { if (rafId) cancelAnimationFrame(rafId); };
-      }, [status, sheetOpen]);
-
-      useEffect(() => () => stopCamera(), []);
-
-      return (
-        React.createElement("div", { className: "min-h-screen safe-pt safe-pb" },
-          React.createElement("div", { className: "max-w-md mx-auto px-4" },
-
-            React.createElement("div", { className: "flex items-center justify-between mb-3" },
-              React.createElement("div", null,
-                React.createElement("div", { className: "text-xs text-white/65" }, "MyGym Food Assistant"),
-                React.createElement("div", { className: "text-xl font-semibold tracking-tight" },
-                  React.createElement("span", { style: { color: "var(--orange)" } }, "Live"),
-                  " Food Vision"
-                )
-              ),
-              null
-            ),
-
-            React.createElement("div", {
-              className: "rounded-2xl p-4 mb-4",
-              style: { background: "linear-gradient(160deg, rgba(255,132,38,0.14), rgba(20,12,7,0.8))", border: "1px solid var(--border)", boxShadow: "0 14px 34px rgba(0,0,0,0.45)" }
-            },
-              React.createElement("div", { className: "text-sm text-white/85" },
-                "Use the bottom button to start camera scan and get instant food + calorie estimate."
-              ),
-              React.createElement("div", { className: "mt-2 text-xs text-white/60" },
-                "Tap a detected item for detailed nutrition and balanced-diet advice."
-              ),
-              errorMsg ? React.createElement("div", { className: "mt-3 text-sm text-red-300" }, errorMsg) : null
-            ),
-
-            React.createElement("div", {
-              className: "relative overflow-hidden rounded-3xl border mb-4",
-              style: { borderColor: "rgba(255,161,79,0.32)", background: "#000", aspectRatio: "3/4", boxShadow: "var(--shadow)" }
-            },
-              React.createElement("video", {
-                ref: videoRef,
-                className: "absolute inset-0 w-full h-full",
-                playsInline: true,
-                muted: true
-              }),
-
-              status === "running"
-                ? React.createElement("div", {
-                    className: "scan-line absolute left-0 right-0 h-12",
-                    style: { background: "linear-gradient(to bottom, rgba(255,122,24,0), rgba(255,122,24,.35), rgba(255,122,24,0))" }
-                  })
-                : null,
-
-              React.createElement("div", { className: "absolute top-3 left-3 right-3 flex items-center justify-between gap-2" },
-                React.createElement("div", {
-                  className: "px-3 py-1.5 rounded-2xl text-xs border",
-                  style: { background: "rgba(20,12,7,0.72)", borderColor: "rgba(255,180,120,0.24)" }
-                },
-                  status === "running" ? (busy ? "Analyzing" : "Live") : "Preview"
-                ),
-                React.createElement("div", {
-                  className: "px-3 py-1.5 rounded-2xl text-xs border",
-                  style: { background: "rgba(0,0,0,0.45)", borderColor: "rgba(255,157,66,0.45)", color: "var(--orange2)" }
-                },
-                  result ? `${confidenceLabel(conf)} confidence` : "Waiting"
-                )
-              ),
-
-              React.createElement("div", {
-                className: "absolute inset-x-0 bottom-0 p-3",
-                style: { background: "linear-gradient(to top, rgba(0,0,0,0.86), rgba(0,0,0,0))" }
-              },
-                !result
-                  ? React.createElement("div", {
-                      className: "rounded-2xl p-4 border",
-                      style: { background: "rgba(20,11,6,0.62)", borderColor: "rgba(255,166,92,0.28)" }
-                    },
-                      React.createElement("div", { className: "text-sm text-white/85" },
-                        status === "running"
-                          ? React.createElement("span", { className: "pulse-soft" }, "Scanning meal in real-time")
-                          : "Camera ready"
-                      ),
-                      React.createElement("div", { className: "mt-1 text-xs text-white/60" },
-                        "Good lighting and full plate in frame improves accuracy."
-                      )
-                    )
-                  : React.createElement("div", {
-                      className: "rounded-2xl p-4 border",
-                      style: { background: "rgba(20,11,6,0.68)", borderColor: "rgba(255,166,92,0.32)" }
-                    },
-                      React.createElement("div", { className: "flex items-start justify-between gap-3" },
-                        React.createElement("div", null,
-                          React.createElement("div", { className: "text-xs text-white/60" }, "Quick info"),
-                          detectedDish
-                            ? React.createElement("div", { className: "mt-0.5 text-xs", style: { color: "var(--orange2)" } },
-                                `${detectedDish.name} • ${detectedDish.cuisine}`
-                              )
-                            : null,
-                          React.createElement("div", { className: "text-3xl font-bold leading-none" },
-                            React.createElement("span", { style: { color: "var(--orange)" } }, round(total.kcal)),
-                            React.createElement("span", { className: "text-base font-semibold text-white/80 ml-1" }, "kcal")
-                          ),
-                          React.createElement("div", { className: "mt-1 text-xs text-white/60" },
-                            `${round(total.protein_g)}g P  |  ${round(total.carbs_g)}g C  |  ${round(total.fat_g)}g F`
-                          )
-                        ),
-                        React.createElement("button", {
-                          onClick: () => openItem(null),
-                          className: "press px-3 py-2 rounded-2xl text-xs font-semibold text-black",
-                          style: { background: "linear-gradient(135deg, var(--orange), var(--orange2))" }
-                        }, "Meal details")
-                      ),
-
-                      React.createElement("div", { className: "mt-3 flex flex-wrap gap-2" },
-                        quickItems.length === 0
-                          ? React.createElement("span", { className: "text-xs text-white/60" }, "No food identified yet")
-                          : quickItems.map((it, i) => (
-                              React.createElement("button", {
-                                key: `${it.name}-${i}`,
-                                onClick: () => openItem(it),
-                                className: "chip-in press px-2.5 py-1.5 rounded-2xl text-xs border",
-                                style: {
-                                  background: "rgba(255,137,46,0.14)",
-                                  borderColor: "rgba(255,176,108,0.36)",
-                                  animationDelay: `${i * 60}ms`
-                                }
-                              }, `${it.name} (${round(it.kcal)} kcal)`)
-                            ))
-                      )
-                    )
-              )
-            )
-          ),
-
-          React.createElement("div", {
-            className: "fixed inset-x-0 z-40 px-4",
-            style: { bottom: "calc(env(safe-area-inset-bottom) + 14px)" }
-          },
-            React.createElement("div", { className: "max-w-md mx-auto" },
-              status !== "running"
-                ? React.createElement("button", {
-                    onClick: startCamera,
-                    className: "press w-full py-3.5 rounded-2xl font-semibold text-black text-base",
-                    style: {
-                      background: "linear-gradient(135deg, var(--orange), var(--orange2))",
-                      boxShadow: "0 14px 32px rgba(255,122,24,0.35)"
-                    }
-                  }, "Start Scan")
-                : React.createElement("button", {
-                    onClick: stopCamera,
-                    className: "press w-full py-3.5 rounded-2xl font-semibold text-white text-base",
-                    style: {
-                      background: "rgba(255,122,24,0.18)",
-                      border: "1px solid rgba(255,159,74,0.5)",
-                      boxShadow: "0 10px 24px rgba(0,0,0,0.35)"
-                    }
-                  }, "Stop Scan")
-            )
-          ),
-
-          React.createElement("div", {
-            onClick: (e) => { if (e.target?.dataset?.overlay === "1") setSheetOpen(false); },
-            "data-overlay": "1",
-            className: "fixed inset-0 z-50",
-            style: { display: sheetOpen ? "block" : "none", background: "rgba(0,0,0,0.55)" }
-          },
-            React.createElement("div", { className: "absolute inset-x-0 bottom-0 sheet open" },
-              React.createElement("div", {
-                className: "rounded-t-3xl border px-4 pt-3 pb-4 max-h-[80vh] overflow-auto",
-                style: { background: "var(--card2)", borderColor: "rgba(255,255,255,0.14)" }
-              },
-                React.createElement("div", { className: "flex items-center justify-between" },
-                  React.createElement("div", null,
-                    React.createElement("div", { className: "text-sm font-semibold" }, selectedItem ? selectedItem.name : "Meal details"),
-                    React.createElement("div", { className: "text-xs text-white/55 mt-0.5" },
-                      selectedItem ? (selectedItem.portion || "Estimated serving") : "Balance and nutrition breakdown"
-                    )
-                  ),
-                  React.createElement("button", {
-                    onClick: () => setSheetOpen(false),
-                    className: "press px-3 py-2 rounded-2xl bg-white/10 border border-white/10 text-sm"
-                  }, "Close")
-                ),
-
-                selectedItem
-                  ? React.createElement("div", { className: "mt-3 space-y-3" },
-                      React.createElement("div", {
-                        className: "rounded-2xl p-3 border",
-                        style: { background: "var(--card)", borderColor: "rgba(255,255,255,0.12)" }
-                      },
-                        React.createElement("div", { className: "text-xs text-white/60" }, "Estimated nutrition"),
-                        React.createElement("div", { className: "mt-1 text-xl font-semibold", style: { color: "var(--orange2)" } }, `${round(selectedItem.kcal)} kcal`),
-                        React.createElement("div", { className: "text-sm text-white/80 mt-1" },
-                          `${round(selectedItem.protein_g)}g protein | ${round(selectedItem.carbs_g)}g carbs | ${round(selectedItem.fat_g)}g fat`
-                        ),
-                        React.createElement("div", { className: "text-xs text-white/55 mt-2" },
-                          `Confidence: ${round((Number(selectedItem.confidence)||0)*100)}%`
-                        ),
-                        React.createElement("div", { className: "text-sm text-white/85 mt-2" }, selectedItem.why || "")
-                      )
-                    )
-                  : null,
-
-                React.createElement("div", { className: "mt-3" },
-                  detectedDish
-                    ? React.createElement("div", {
-                        className: "rounded-2xl p-3 border mb-3",
-                        style: { background: "var(--card)", borderColor: "rgba(255,255,255,0.12)" }
-                      },
-                        React.createElement("div", { className: "text-xs text-white/60" }, "Detected dish"),
-                        React.createElement("div", { className: "mt-1 text-lg font-semibold", style: { color: "var(--orange2)" } },
-                          `${detectedDish.name} (${detectedDish.cuisine})`
-                        ),
-                        Array.isArray(detectedDish.alternatives) && detectedDish.alternatives.length
-                          ? React.createElement("div", { className: "mt-1 text-xs text-white/65" },
-                              `Also possible: ${detectedDish.alternatives.join(", ")}`
-                            )
-                          : null
-                      )
-                    : null,
-                  React.createElement("div", {
-                    className: "rounded-2xl p-3 border",
-                    style: { background: "var(--card)", borderColor: "rgba(255,255,255,0.12)" }
-                  },
-                    React.createElement("div", { className: "text-xs text-white/60" }, "Meal balance score"),
-                    React.createElement("div", { className: "mt-1 text-2xl font-bold", style: { color: scoreColor(balance.score) } },
-                      `${round(balance.score)}/100  ${balance.verdict || ""}`
-                    ),
-                    React.createElement("div", { className: "text-sm text-white/80 mt-1" }, balance.summary || "")
-                  )
-                ),
-
-                React.createElement("div", { className: "mt-3" },
-                  React.createElement("div", { className: "text-sm font-semibold mb-2" }, "How to make it more balanced"),
-                  Array.isArray(balance.improve) && balance.improve.length
-                    ? React.createElement("div", { className: "space-y-2" },
-                        balance.improve.map((tip, i) => (
-                          React.createElement("div", {
-                            key: i,
-                            className: "rounded-2xl p-3 border text-sm",
-                            style: { background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.12)" }
-                          }, tip)
-                        ))
-                      )
-                    : React.createElement("div", { className: "text-sm text-white/60" }, "No extra tips returned yet.")
-                ),
-
-                React.createElement("div", { className: "mt-3" },
-                  React.createElement("div", { className: "text-sm font-semibold mb-2" }, "Smart suggestions"),
-                  suggestions.length
-                    ? React.createElement("div", { className: "space-y-2" },
-                        suggestions.map((s, i) => (
-                          React.createElement("div", {
-                            key: i,
-                            className: "rounded-2xl p-3 border",
-                            style: { background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.12)" }
-                          },
-                            React.createElement("div", { className: "text-xs", style: { color: "var(--orange2)" } }, s.goal || "Balanced meal"),
-                            React.createElement("div", { className: "text-sm text-white/85 mt-1" }, s.add || ""),
-                            s.replace ? React.createElement("div", { className: "text-xs text-white/65 mt-1" }, `Swap: ${s.replace}`) : null,
-                            s.why ? React.createElement("div", { className: "text-xs text-white/55 mt-1" }, s.why) : null
-                          )
-                        ))
-                      )
-                    : React.createElement("div", { className: "text-sm text-white/60" }, "No suggestions returned yet.")
-                ),
-
-                React.createElement("div", { className: "mt-4 text-xs text-white/45" },
-                  "AI estimates vary by portion size, ingredients, and preparation method."
-                )
-              )
-            )
-          )
-        )
-      );
+    if (!content || !content.trim()) {
+      return res.status(200).json({
+        error: "Empty model response",
+        raw_openai: text.slice(0, 2000),
+      });
     }
 
-    ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
-  </script>
-</body>
-</html>
+    let parsed;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      return res.status(200).json({
+        error: "Model returned non-JSON content",
+        raw_model_content: content.slice(0, 2000),
+      });
+    }
 
+    const n = (v, min = 0, max = 99999) => {
+      const x = Number(v);
+      if (!Number.isFinite(x)) return 0;
+      return Math.max(min, Math.min(max, x));
+    };
+    const s = (v, fallback = "") => String(v ?? fallback).trim() || fallback;
 
+    const items = Array.isArray(parsed?.items)
+      ? parsed.items.slice(0, 12).map((it) => ({
+          name: String(it?.name || "Food item"),
+          portion: String(it?.portion || "1 serving"),
+          grams: n(it?.grams, 0, 3000),
+          kcal: n(it?.kcal, 0, 6000),
+          protein_g: n(it?.protein_g, 0, 400),
+          carbs_g: n(it?.carbs_g, 0, 600),
+          fat_g: n(it?.fat_g, 0, 300),
+          confidence: n(it?.confidence, 0, 1),
+          why: String(it?.why || "Estimated from visible portion and common preparation."),
+        }))
+      : [];
 
+    const totalFromItems = items.reduce(
+      (acc, it) => {
+        acc.kcal += it.kcal;
+        acc.protein_g += it.protein_g;
+        acc.carbs_g += it.carbs_g;
+        acc.fat_g += it.fat_g;
+        return acc;
+      },
+      { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+    );
+
+    const totalRaw = parsed?.total || {};
+    const total = {
+      kcal: n(totalRaw.kcal || totalFromItems.kcal, 0, 8000),
+      protein_g: n(totalRaw.protein_g || totalFromItems.protein_g, 0, 500),
+      carbs_g: n(totalRaw.carbs_g || totalFromItems.carbs_g, 0, 900),
+      fat_g: n(totalRaw.fat_g || totalFromItems.fat_g, 0, 400),
+    };
+
+    const suggestions = Array.isArray(parsed?.suggestions)
+      ? parsed.suggestions.slice(0, 6).map((s) => ({
+          goal: String(s?.goal || "Balanced meal"),
+          add: String(s?.add || "Add vegetables or lean protein."),
+          replace: String(s?.replace || ""),
+          why: String(s?.why || "Improves overall nutrition quality."),
+        }))
+      : [];
+
+    const balance = {
+      score: n(parsed?.balance?.score, 0, 100),
+      verdict: s(parsed?.balance?.verdict, "Needs improvement"),
+      summary: s(parsed?.balance?.summary, "Meal can be improved with better macro balance."),
+      improve: Array.isArray(parsed?.balance?.improve)
+        ? parsed.balance.improve.slice(0, 5).map((x) => String(x))
+        : [],
+    };
+
+    const detected_dish = {
+      name: s(parsed?.detected_dish?.name, items[0]?.name || "Meal"),
+      cuisine: s(parsed?.detected_dish?.cuisine, "Unknown"),
+      confidence: n(parsed?.detected_dish?.confidence ?? parsed?.confidence, 0, 1),
+      alternatives: Array.isArray(parsed?.detected_dish?.alternatives)
+        ? parsed.detected_dish.alternatives.slice(0, 4).map((x) => s(x)).filter(Boolean)
+        : [],
+    };
+
+    const normalizeDishName = (name) =>
+      String(name || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const prevDish = {
+      name: s(previousDetectedDish?.name, ""),
+      cuisine: s(previousDetectedDish?.cuisine, ""),
+      confidence: n(previousDetectedDish?.confidence, 0, 1),
+      alternatives: Array.isArray(previousDetectedDish?.alternatives)
+        ? previousDetectedDish.alternatives.slice(0, 6).map((x) => s(x)).filter(Boolean)
+        : [],
+    };
+
+    const currentNameNorm = normalizeDishName(detected_dish.name);
+    const previousNameNorm = normalizeDishName(prevDish.name);
+    const sameDish = currentNameNorm && previousNameNorm && currentNameNorm === previousNameNorm;
+
+    let stabilizedDish = detected_dish;
+
+    if (previousNameNorm && !sameDish) {
+      const currentAltsNorm = new Set(detected_dish.alternatives.map(normalizeDishName).filter(Boolean));
+      const previousListedAsAlternative = currentAltsNorm.has(previousNameNorm);
+      const strongSwitch =
+        detected_dish.confidence >= 0.82 &&
+        detected_dish.confidence >= prevDish.confidence + 0.12;
+
+      const shouldKeepPrevious =
+        previousListedAsAlternative ||
+        detected_dish.confidence < 0.68 ||
+        (prevDish.confidence >= 0.75 && detected_dish.confidence < prevDish.confidence + 0.1);
+
+      if (shouldKeepPrevious && !strongSwitch) {
+        const mergedAlternatives = [
+          detected_dish.name,
+          ...detected_dish.alternatives,
+          ...prevDish.alternatives,
+        ].filter(Boolean);
+
+        stabilizedDish = {
+          name: prevDish.name,
+          cuisine: prevDish.cuisine || detected_dish.cuisine,
+          confidence: n(Math.max(prevDish.confidence, detected_dish.confidence * 0.96), 0, 1),
+          alternatives: Array.from(new Set(mergedAlternatives))
+            .filter((x) => normalizeDishName(x) !== previousNameNorm)
+            .slice(0, 4),
+        };
+      }
+    }
+
+    return res.status(200).json({
+      detected_dish: stabilizedDish,
+      items,
+      total,
+      confidence: n(parsed?.confidence, 0, 1),
+      balance,
+      suggestions,
+    });
+  } catch (err) {
+    console.error("analyze error:", err);
+    return res.status(500).json({ error: "Server error", details: String(err?.message || err) });
+  }
+}
