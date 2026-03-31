@@ -1,0 +1,7 @@
+{
+  "name": "calorie-counter",
+  "private": true,
+  "dependencies": {
+    "mongodb": "^6.17.0"
+  }
+}
