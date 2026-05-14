@@ -3,5 +3,8 @@
   "private": true,
   "dependencies": {
     "mongodb": "^6.17.0"
+  },
+  "scripts": {
+    "dev": "next dev -p 4000"
   }
 }

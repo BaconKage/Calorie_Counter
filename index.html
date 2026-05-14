@@ -36,9 +36,9 @@
     .safe-pb{padding-bottom:calc(env(safe-area-inset-bottom) + 92px);}
 
     @keyframes scanLine {
-      0%{ transform:translateY(-8%); opacity:.25; }
-      50%{ opacity:.85; }
-      100%{ transform:translateY(108%); opacity:.2; }
+      0%{ transform:translateY(-8%); opacity:.15; }
+      50%{ opacity:.65; }
+      100%{ transform:translateY(108%); opacity:.15; }
     }
     .scan-line{ animation:scanLine 2.1s linear infinite; }
 
@@ -49,8 +49,8 @@
     .chip-in{ animation:chipIn .28s ease-out both; }
 
     @keyframes pulseSoft {
-      0%,100%{ opacity:.5; }
-      50%{ opacity:.95; }
+      0%,100%{ opacity:.4; }
+      50%{ opacity:.8; }
     }
     .pulse-soft{ animation:pulseSoft 1.2s ease-in-out infinite; }
 
@@ -422,7 +422,7 @@
 
             React.createElement("div", { className: "flex items-center justify-between mb-3" },
               React.createElement("div", null,
-                React.createElement("div", { className: "text-xs text-white/65" }, "Calorie Lens"),
+                React.createElement("div", { className: "text-xs text-gray-500" }, "Calorie Lens"),
                 React.createElement("div", { className: "text-xl font-semibold tracking-tight" },
                   React.createElement("span", { style: { color: "var(--orange)" } }, "Live"),
                   " Food Vision"
@@ -436,10 +436,10 @@
             },
               React.createElement("div", { className: "flex items-start justify-between gap-3" },
                 React.createElement("div", null,
-                  React.createElement("div", { className: "text-sm font-semibold text-white/90" },
+                  React.createElement("div", { className: "text-sm font-semibold text-gray-900" },
                     status === "running" ? "Frame your meal" : "Get a nutrition estimate in one tap"
                   ),
-                  React.createElement("div", { className: "mt-1 text-xs text-white/60 leading-relaxed" },
+                  React.createElement("div", { className: "mt-1 text-xs text-gray-500 leading-relaxed" },
                     result
                       ? "Your calories, macros, balance score, and meal suggestions are ready below."
                       : "Use good lighting and keep the full plate in view for the best estimate."
@@ -448,15 +448,15 @@
                 status !== "running"
                   ? React.createElement("button", {
                       onClick: startCamera,
-                      className: "press shrink-0 px-4 py-2 rounded-2xl font-semibold text-black text-sm",
+                      className: "press shrink-0 px-4 py-2 rounded-2xl font-semibold text-white text-sm",
                       style: { background: "linear-gradient(135deg, var(--orange), var(--orange2))" }
                     }, "Scan")
                   : React.createElement("button", {
                       onClick: stopCamera,
-                      className: "press shrink-0 px-4 py-2 rounded-2xl font-semibold text-white text-sm border border-white/10 bg-white/10"
+                      className: "press shrink-0 px-4 py-2 rounded-2xl font-semibold text-gray-900 text-sm border border-gray-200 bg-gray-100"
                     }, "End")
               ),
-              errorMsg ? React.createElement("div", { className: "mt-3 text-sm text-red-300" }, errorMsg) : null
+              errorMsg ? React.createElement("div", { className: "mt-3 text-sm text-red-500" }, errorMsg) : null
             ),
 
             React.createElement("div", {
@@ -501,12 +501,12 @@
                       className: "rounded-2xl p-4 border",
                       style: { background: "rgba(255,255,255,0.88)", borderColor: "rgba(236,124,31,0.22)" }
                     },
-                      React.createElement("div", { className: "text-sm text-white/85" },
+                      React.createElement("div", { className: "text-sm text-gray-800" },
                         status === "running"
                           ? React.createElement("span", { className: "pulse-soft" }, "Building your nutrition estimate")
                           : "Ready to scan"
                       ),
-                      React.createElement("div", { className: "mt-1 text-xs text-white/60" },
+                      React.createElement("div", { className: "mt-1 text-xs text-gray-500" },
                         "Keep the full plate in frame for a more reliable result."
                       )
                     )
@@ -516,7 +516,7 @@
                     },
                       React.createElement("div", { className: "flex items-start justify-between gap-3" },
                         React.createElement("div", null,
-                          React.createElement("div", { className: "text-xs text-white/60" }, "Nutrition estimate"),
+                          React.createElement("div", { className: "text-xs text-gray-500" }, "Nutrition estimate"),
                           detectedDish
                             ? React.createElement("div", { className: "mt-0.5 text-xs", style: { color: "var(--orange2)" } },
                                 `${detectedDish.name} • ${detectedDish.cuisine}`
@@ -524,22 +524,22 @@
                             : null,
                           React.createElement("div", { className: "text-3xl font-bold leading-none" },
                             React.createElement("span", { style: { color: "var(--orange)" } }, round(total.kcal)),
-                            React.createElement("span", { className: "text-base font-semibold text-white/80 ml-1" }, "kcal")
+                            React.createElement("span", { className: "text-base font-semibold text-gray-700 ml-1" }, "kcal")
                           ),
-                          React.createElement("div", { className: "mt-1 text-xs text-white/60" },
+                          React.createElement("div", { className: "mt-1 text-xs text-gray-500" },
                             `${round(total.protein_g)}g P  |  ${round(total.carbs_g)}g C  |  ${round(total.fat_g)}g F`
                           )
                         ),
                         React.createElement("button", {
                           onClick: () => openItem(null),
-                          className: "press px-3 py-2 rounded-2xl text-xs font-semibold text-black",
+                          className: "press px-3 py-2 rounded-2xl text-xs font-semibold text-white",
                           style: { background: "linear-gradient(135deg, var(--orange), var(--orange2))" }
                         }, "Review meal")
                       ),
 
                       React.createElement("div", { className: "mt-3 flex flex-wrap gap-2" },
                         quickItems.length === 0
-                          ? React.createElement("span", { className: "text-xs text-white/60" }, "No food identified yet")
+                          ? React.createElement("span", { className: "text-xs text-gray-500" }, "No food identified yet")
                           : quickItems.map((it, i) => (
                               React.createElement("button", {
                                 key: `${it.name}-${i}`,
@@ -563,7 +563,7 @@
                   React.createElement("div", { className: "surface rounded-2xl p-4" },
                     React.createElement("div", { className: "flex items-start justify-between gap-3" },
                       React.createElement("div", null,
-                        React.createElement("div", { className: "text-xs text-white/55" }, "Nutrition estimate"),
+                        React.createElement("div", { className: "text-xs text-gray-500" }, "Nutrition estimate"),
                         React.createElement("div", { className: "mt-0.5 text-lg font-semibold leading-tight" },
                           detectedDish ? detectedDish.name : "Meal identified"
                         ),
@@ -575,33 +575,33 @@
                       ),
                       React.createElement("button", {
                         onClick: () => openItem(null),
-                        className: "press shrink-0 px-3 py-2 rounded-2xl text-xs font-semibold text-black",
+                        className: "press shrink-0 px-3 py-2 rounded-2xl text-xs font-semibold text-white",
                         style: { background: "linear-gradient(135deg, var(--orange), var(--orange2))" }
                       }, "Review")
                     ),
 
                     React.createElement("div", { className: "grid grid-cols-4 gap-2 mt-4" },
                       React.createElement("div", { className: "metric-card rounded-2xl p-3 col-span-2" },
-                        React.createElement("div", { className: "text-xs text-white/55" }, "Calories"),
+                        React.createElement("div", { className: "text-xs text-gray-500" }, "Calories"),
                         React.createElement("div", { className: "mt-1 text-2xl font-bold leading-none", style: { color: "var(--orange)" } },
                           round(total.kcal)
                         ),
-                        React.createElement("div", { className: "mt-1 text-xs text-white/55" }, "kcal")
+                        React.createElement("div", { className: "mt-1 text-xs text-gray-500" }, "kcal")
                       ),
                       React.createElement("div", { className: "metric-card rounded-2xl p-3" },
-                        React.createElement("div", { className: "text-xs text-white/55" }, "Protein"),
+                        React.createElement("div", { className: "text-xs text-gray-500" }, "Protein"),
                         React.createElement("div", { className: "mt-1 text-lg font-semibold" }, `${round(total.protein_g)}g`)
                       ),
                       React.createElement("div", { className: "metric-card rounded-2xl p-3" },
-                        React.createElement("div", { className: "text-xs text-white/55" }, "Carbs"),
+                        React.createElement("div", { className: "text-xs text-gray-500" }, "Carbs"),
                         React.createElement("div", { className: "mt-1 text-lg font-semibold" }, `${round(total.carbs_g)}g`)
                       ),
                       React.createElement("div", { className: "metric-card rounded-2xl p-3 col-span-2" },
-                        React.createElement("div", { className: "text-xs text-white/55" }, "Fat"),
+                        React.createElement("div", { className: "text-xs text-gray-500" }, "Fat"),
                         React.createElement("div", { className: "mt-1 text-lg font-semibold" }, `${round(total.fat_g)}g`)
                       ),
                       React.createElement("div", { className: "metric-card rounded-2xl p-3 col-span-2" },
-                        React.createElement("div", { className: "text-xs text-white/55" }, "Balance"),
+                        React.createElement("div", { className: "text-xs text-gray-500" }, "Balance"),
                         React.createElement("div", { className: "mt-1 text-lg font-semibold", style: { color: scoreColor(balance.score) } },
                           `${round(balance.score)}/100`
                         )
@@ -613,7 +613,7 @@
                     ? React.createElement("div", { className: "surface rounded-2xl p-4" },
                         React.createElement("div", { className: "flex items-center justify-between gap-3 mb-2" },
                           React.createElement("div", { className: "text-sm font-semibold" }, "Items detected"),
-                          React.createElement("div", { className: "text-xs text-white/55" }, "Open any item")
+                          React.createElement("div", { className: "text-xs text-gray-500" }, "Open any item")
                         ),
                         React.createElement("div", { className: "space-y-2" },
                           quickItems.map((it, i) => (
@@ -624,7 +624,7 @@
                             },
                               React.createElement("div", { className: "min-w-0" },
                                 React.createElement("div", { className: "text-sm font-semibold truncate" }, it.name),
-                                React.createElement("div", { className: "text-xs text-white/55 truncate" }, it.portion || "Estimated portion")
+                                React.createElement("div", { className: "text-xs text-gray-500 truncate" }, it.portion || "Estimated portion")
                               ),
                               React.createElement("div", { className: "text-sm font-semibold shrink-0", style: { color: "var(--orange2)" } },
                                 `${round(it.kcal)} kcal`
@@ -639,7 +639,7 @@
                     React.createElement("div", { className: "flex items-start justify-between gap-3" },
                       React.createElement("div", null,
                         React.createElement("div", { className: "text-sm font-semibold" }, balance.verdict || "Meal quality"),
-                        React.createElement("div", { className: "text-xs text-white/65 mt-1 leading-relaxed" }, balance.summary || "Your meal quality summary will appear after scanning.")
+                        React.createElement("div", { className: "text-xs text-gray-500 mt-1 leading-relaxed" }, balance.summary || "Your meal quality summary will appear after scanning.")
                       ),
                       React.createElement("div", {
                         className: "px-2.5 py-1 rounded-2xl text-xs font-semibold",
@@ -651,7 +651,7 @@
                           balance.improve.slice(0, 3).map((tip, i) => (
                             React.createElement("div", {
                               key: `tip-${i}`,
-                              className: "rounded-2xl px-3 py-2 text-xs leading-relaxed border border-white/10 bg-white/5"
+                              className: "rounded-2xl px-3 py-2 text-xs leading-relaxed border border-gray-200 bg-gray-50"
                             }, tip)
                           ))
                         )
@@ -663,28 +663,28 @@
                         suggestions.length
                           ? React.createElement("div", null,
                               React.createElement("div", { className: "text-sm font-semibold mb-2" }, "Suggested improvement"),
-                              React.createElement("div", { className: "rounded-2xl p-3 border border-white/10 bg-white/5" },
+                              React.createElement("div", { className: "rounded-2xl p-3 border border-gray-200 bg-gray-50" },
                                 React.createElement("div", { className: "text-xs", style: { color: "var(--orange2)" } },
                                   suggestions[0]?.goal || "Balanced meal"
                                 ),
-                                React.createElement("div", { className: "text-sm text-white/85 mt-1" }, suggestions[0]?.add || ""),
+                                React.createElement("div", { className: "text-sm text-gray-800 mt-1" }, suggestions[0]?.add || ""),
                                 suggestions[0]?.why
-                                  ? React.createElement("div", { className: "text-xs text-white/55 mt-1" }, suggestions[0].why)
+                                  ? React.createElement("div", { className: "text-xs text-gray-500 mt-1" }, suggestions[0].why)
                                   : null
                               )
                             )
                           : null,
-                        React.createElement("div", { className: suggestions.length ? "mt-4 pt-4 border-t border-white/10" : "" },
+                        React.createElement("div", { className: suggestions.length ? "mt-4 pt-4 border-t border-gray-200" : "" },
                           React.createElement("div", { className: "flex items-center justify-between gap-3" },
                             React.createElement("div", null,
                               React.createElement("div", { className: "text-sm font-semibold" }, "How accurate was this?"),
-                              React.createElement("div", { className: "text-xs text-white/55 mt-0.5" }, "Your response helps improve scan quality.")
+                              React.createElement("div", { className: "text-xs text-gray-500 mt-0.5" }, "Your response helps improve scan quality.")
                             ),
                             React.createElement("div", { className: "flex gap-2 shrink-0" },
                               React.createElement("button", {
                                 onClick: () => handleFeedback(true),
                                 disabled: feedbackState.status === "saving" || feedbackState.status === "saved",
-                                className: "press px-3 py-2 rounded-2xl text-sm font-semibold text-black disabled:opacity-60",
+                                className: "press px-3 py-2 rounded-2xl text-sm font-semibold text-white disabled:opacity-60",
                                 style: {
                                   background: feedbackState.value === true && feedbackState.status === "saved"
                                     ? "linear-gradient(135deg, var(--orange), var(--orange2))"
@@ -694,7 +694,7 @@
                               React.createElement("button", {
                                 onClick: () => handleFeedback(false),
                                 disabled: feedbackState.status === "saving" || feedbackState.status === "saved",
-                                className: "press px-3 py-2 rounded-2xl text-sm font-semibold text-white disabled:opacity-60",
+                                className: "press px-3 py-2 rounded-2xl text-sm font-semibold text-gray-900 disabled:opacity-60",
                                 style: {
                                   background: feedbackState.value === false && feedbackState.status === "saved"
                                     ? "rgba(220,38,38,0.12)"
@@ -725,7 +725,7 @@
               status !== "running"
                 ? React.createElement("button", {
                     onClick: startCamera,
-                    className: "press w-full py-3.5 rounded-2xl font-semibold text-black text-base",
+                    className: "press w-full py-3.5 rounded-2xl font-semibold text-white text-base",
                     style: {
                       background: "linear-gradient(135deg, var(--orange), var(--orange2))",
                       boxShadow: "0 14px 32px rgba(249,115,22,0.26)"
@@ -733,7 +733,7 @@
                   }, "Start scanning")
                 : React.createElement("button", {
                     onClick: stopCamera,
-                    className: "press w-full py-3.5 rounded-2xl font-semibold text-white text-base",
+                    className: "press w-full py-3.5 rounded-2xl font-semibold text-gray-900 text-base",
                     style: {
                       background: "rgba(249,115,22,0.12)",
                       border: "1px solid rgba(236,124,31,0.34)",
@@ -757,13 +757,13 @@
                 React.createElement("div", { className: "flex items-center justify-between" },
                   React.createElement("div", null,
                     React.createElement("div", { className: "text-sm font-semibold" }, selectedItem ? selectedItem.name : "Meal review"),
-                    React.createElement("div", { className: "text-xs text-white/55 mt-0.5" },
+                    React.createElement("div", { className: "text-xs text-gray-500 mt-0.5" },
                       selectedItem ? (selectedItem.portion || "Estimated portion") : "Nutrition, balance, and suggestions"
                     )
                   ),
                   React.createElement("button", {
                     onClick: () => setSheetOpen(false),
-                    className: "press px-3 py-2 rounded-2xl bg-white/10 border border-white/10 text-sm"
+                    className: "press px-3 py-2 rounded-2xl bg-gray-100 border border-gray-200 text-sm"
                   }, "Done")
                 ),
 
@@ -773,15 +773,15 @@
                         className: "rounded-2xl p-3 border",
                         style: { background: "var(--card)", borderColor: "rgba(236,124,31,0.18)" }
                       },
-                        React.createElement("div", { className: "text-xs text-white/60" }, "Nutrition estimate"),
+                        React.createElement("div", { className: "text-xs text-gray-500" }, "Nutrition estimate"),
                         React.createElement("div", { className: "mt-1 text-xl font-semibold", style: { color: "var(--orange2)" } }, `${round(selectedItem.kcal)} kcal`),
-                        React.createElement("div", { className: "text-sm text-white/80 mt-1" },
+                        React.createElement("div", { className: "text-sm text-gray-700 mt-1" },
                           `${round(selectedItem.protein_g)}g protein | ${round(selectedItem.carbs_g)}g carbs | ${round(selectedItem.fat_g)}g fat`
                         ),
-                        React.createElement("div", { className: "text-xs text-white/55 mt-2" },
+                        React.createElement("div", { className: "text-xs text-gray-500 mt-2" },
                           `Confidence: ${round((Number(selectedItem.confidence)||0)*100)}%`
                         ),
-                        React.createElement("div", { className: "text-sm text-white/85 mt-2" }, selectedItem.why || "")
+                        React.createElement("div", { className: "text-sm text-gray-800 mt-2" }, selectedItem.why || "")
                       )
                     )
                   : null,
@@ -792,12 +792,12 @@
                         className: "rounded-2xl p-3 border mb-3",
                         style: { background: "var(--card)", borderColor: "rgba(236,124,31,0.18)" }
                       },
-                        React.createElement("div", { className: "text-xs text-white/60" }, "Dish identified"),
+                        React.createElement("div", { className: "text-xs text-gray-500" }, "Dish identified"),
                         React.createElement("div", { className: "mt-1 text-lg font-semibold", style: { color: "var(--orange2)" } },
                           `${detectedDish.name} (${detectedDish.cuisine})`
                         ),
                         Array.isArray(detectedDish.alternatives) && detectedDish.alternatives.length
-                          ? React.createElement("div", { className: "mt-1 text-xs text-white/65" },
+                          ? React.createElement("div", { className: "mt-1 text-xs text-gray-500" },
                               `Also possible: ${detectedDish.alternatives.join(", ")}`
                             )
                           : null
@@ -807,11 +807,11 @@
                     className: "rounded-2xl p-3 border",
                     style: { background: "var(--card)", borderColor: "rgba(236,124,31,0.18)" }
                   },
-                    React.createElement("div", { className: "text-xs text-white/60" }, "Meal quality score"),
+                    React.createElement("div", { className: "text-xs text-gray-500" }, "Meal quality score"),
                     React.createElement("div", { className: "mt-1 text-2xl font-bold", style: { color: scoreColor(balance.score) } },
                       `${round(balance.score)}/100  ${balance.verdict || ""}`
                     ),
-                    React.createElement("div", { className: "text-sm text-white/80 mt-1" }, balance.summary || "")
+                    React.createElement("div", { className: "text-sm text-gray-700 mt-1" }, balance.summary || "")
                   )
                 ),
 
@@ -827,7 +827,7 @@
                           }, tip)
                         ))
                       )
-                    : React.createElement("div", { className: "text-sm text-white/60" }, "No extra improvements available.")
+                    : React.createElement("div", { className: "text-sm text-gray-500" }, "No extra improvements available.")
                 ),
 
                 React.createElement("div", { className: "mt-3" },
@@ -841,13 +841,13 @@
                             style: { background: "rgba(255,246,235,0.78)", borderColor: "rgba(236,124,31,0.18)" }
                           },
                             React.createElement("div", { className: "text-xs", style: { color: "var(--orange2)" } }, s.goal || "Balanced meal"),
-                            React.createElement("div", { className: "text-sm text-white/85 mt-1" }, s.add || ""),
-                            s.replace ? React.createElement("div", { className: "text-xs text-white/65 mt-1" }, `Swap: ${s.replace}`) : null,
-                            s.why ? React.createElement("div", { className: "text-xs text-white/55 mt-1" }, s.why) : null
+                            React.createElement("div", { className: "text-sm text-gray-800 mt-1" }, s.add || ""),
+                            s.replace ? React.createElement("div", { className: "text-xs text-gray-500 mt-1" }, `Swap: ${s.replace}`) : null,
+                            s.why ? React.createElement("div", { className: "text-xs text-gray-500 mt-1" }, s.why) : null
                           )
                         ))
                       )
-                    : React.createElement("div", { className: "text-sm text-white/60" }, "No suggestions available.")
+                    : React.createElement("div", { className: "text-sm text-gray-500" }, "No suggestions available.")
                 ),
 
                 !selectedItem && result
@@ -857,14 +857,14 @@
                         style: { background: "rgba(255,246,235,0.78)", borderColor: "rgba(236,124,31,0.18)" }
                       },
                         React.createElement("div", { className: "text-sm font-semibold" }, "How accurate was this?"),
-                        React.createElement("div", { className: "text-xs text-white/60 mt-1" },
+                        React.createElement("div", { className: "text-xs text-gray-500 mt-1" },
                           "Your response helps improve scan quality."
                         ),
                         React.createElement("div", { className: "mt-3 flex gap-2" },
                           React.createElement("button", {
                             onClick: () => handleFeedback(true),
                             disabled: feedbackState.status === "saving" || feedbackState.status === "saved",
-                            className: "press flex-1 py-2.5 rounded-2xl text-sm font-semibold text-black disabled:opacity-60",
+                            className: "press flex-1 py-2.5 rounded-2xl text-sm font-semibold text-white disabled:opacity-60",
                             style: {
                               background: feedbackState.value === true && feedbackState.status === "saved"
                                 ? "linear-gradient(135deg, var(--orange), var(--orange2))"
@@ -874,7 +874,7 @@
                           React.createElement("button", {
                             onClick: () => handleFeedback(false),
                             disabled: feedbackState.status === "saving" || feedbackState.status === "saved",
-                            className: "press flex-1 py-2.5 rounded-2xl text-sm font-semibold text-white disabled:opacity-60",
+                            className: "press flex-1 py-2.5 rounded-2xl text-sm font-semibold text-gray-900 disabled:opacity-60",
                             style: {
                               background: feedbackState.value === false && feedbackState.status === "saved"
                                 ? "rgba(220,38,38,0.12)"
@@ -893,7 +893,7 @@
                     )
                   : null,
 
-                React.createElement("div", { className: "mt-4 text-xs text-white/45" },
+                React.createElement("div", { className: "mt-4 text-xs text-gray-400" },
                   "Nutrition estimates can vary by portion size, ingredients, and preparation method."
                 )
               )
